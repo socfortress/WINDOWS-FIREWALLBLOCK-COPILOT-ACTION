@@ -101,6 +101,7 @@ catch {
     action    = "block_ip"
     status    = "error"
     error     = $_.Exception.Message
+    copilot_soar = $true
   }
   $json = $logObj | ConvertTo-Json -Compress -Depth 3
 
