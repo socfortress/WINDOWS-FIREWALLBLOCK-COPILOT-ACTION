@@ -1,10 +1,14 @@
 [CmdletBinding()]
 param(
-  [string]$Direction = 'Inbound',  # Can be Inbound or Outbound
+  [string]$TargetIP,
+  [string]$Direction = 'Inbound', 
   [int]$MaxWaitSeconds = 300,
   [string]$LogPath = "$env:TEMP\BlockIP-script.log",
   [string]$ARLog = 'C:\Program Files (x86)\ossec-agent\active-response\active-responses.log'
 )
+if ($Arg1 -and -not $TargetIP) { $TargetIP = $Arg1 }
+if ($Arg2 -and -not $Direction) { $Direction = $Arg2 }
+if ($Arg3 -and -not $MaxWaitSeconds) { $MaxWaitSeconds = [int]$Arg3 }
 
 $ErrorActionPreference = 'Stop'
 $HostName = $env:COMPUTERNAME
@@ -41,9 +45,7 @@ $runStart = Get-Date
 Write-Log "=== SCRIPT START : Block IP ==="
 
 try {
-
-  $TargetIP = Read-Host "Enter IP address to block"
-
+  if (-not $TargetIP) { throw "TargetIP is required (no interactive input allowed)" }
   if ($TargetIP -notmatch '^(\d{1,3}\.){3}\d{1,3}$') {
     throw "Invalid IPv4 address format: $TargetIP"
   }
@@ -69,7 +71,6 @@ try {
     Write-Log "Created firewall rule to block $TargetIP ($Direction)" 'INFO'
     $status = "blocked"
   }
-
 
   $logObj = [pscustomobject]@{
     timestamp    = (Get-Date).ToString('o')
