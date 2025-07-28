@@ -6,7 +6,6 @@ param(
   [string]$LogPath = "$env:TEMP\BlockIP-script.log",
   [string]$ARLog = 'C:\Program Files (x86)\ossec-agent\active-response\active-responses.log'
 )
-
 if ($Arg1 -and -not $TargetIP) { $TargetIP = $Arg1 }
 if ($Arg2 -and -not $Direction) { $Direction = $Arg2 }
 if ($Arg3 -and -not $MaxWaitSeconds) { $MaxWaitSeconds = [int]$Arg3 }
@@ -17,28 +16,28 @@ $LogMaxKB = 100
 $LogKeep = 5
 
 function Write-Log {
- param([string]$Message,[ValidateSet('INFO','WARN','ERROR','DEBUG')]$Level='INFO')
- $ts=(Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
- $line="[$ts][$Level] $Message"
- switch($Level){
-  'ERROR' { Write-Host $line -ForegroundColor Red }
-  'WARN'  { Write-Host $line -ForegroundColor Yellow }
-  'DEBUG' { if ($PSCmdlet.MyInvocation.BoundParameters.ContainsKey('Verbose')) { Write-Verbose $line } }
-  default { Write-Host $line }
- }
- Add-Content -Path $LogPath -Value $line
+  param([string]$Message,[ValidateSet('INFO','WARN','ERROR','DEBUG')]$Level='INFO')
+  $ts=(Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
+  $line="[$ts][$Level] $Message"
+  switch($Level){
+    'ERROR' { Write-Host $line -ForegroundColor Red }
+    'WARN'  { Write-Host $line -ForegroundColor Yellow }
+    'DEBUG' { if ($PSCmdlet.MyInvocation.BoundParameters.ContainsKey('Verbose')) { Write-Verbose $line } }
+    default { Write-Host $line }
+  }
+  Add-Content -Path $LogPath -Value $line
 }
 
 function Rotate-Log {
- if(Test-Path $LogPath -PathType Leaf){
-  if((Get-Item $LogPath).Length/1KB -gt $LogMaxKB){
-   for($i=$LogKeep-1;$i -ge 0;$i--){
-    $old="$LogPath.$i";$new="$LogPath."+($i+1)
-    if(Test-Path $old){Rename-Item $old $new -Force}
-   }
-   Rename-Item $LogPath "$LogPath.1" -Force
+  if(Test-Path $LogPath -PathType Leaf){
+    if((Get-Item $LogPath).Length/1KB -gt $LogMaxKB){
+      for($i=$LogKeep-1;$i -ge 0;$i--){
+        $old="$LogPath.$i";$new="$LogPath."+($i+1)
+        if(Test-Path $old){Rename-Item $old $new -Force}
+      }
+      Rename-Item $LogPath "$LogPath.1" -Force
+    }
   }
- }
 }
 
 Rotate-Log
@@ -50,7 +49,6 @@ try {
   if ($TargetIP -notmatch '^(\d{1,3}\.){3}\d{1,3}$') {
     throw "Invalid IPv4 address format: $TargetIP"
   }
-
   $RuleName = "Block_$($TargetIP.Replace('.','_'))"
   Write-Log "Target IP: $TargetIP"
   Write-Log "Direction: $Direction"
@@ -86,14 +84,13 @@ try {
   Set-Content -Path $tempFile -Value $json -Encoding ascii -Force
 
   try {
-    Remove-Item -Path $ARLog -Force -ErrorAction Stop
     Move-Item -Path $tempFile -Destination $ARLog -Force
-    Write-Log "Log file overwritten at $ARLog" 'INFO'
+    Write-Log "Log file replaced at $ARLog" 'INFO'
   }
   catch {
-    Clear-Content -Path $ARLog -Force -ErrorAction SilentlyContinue
-    Get-Content -Path $tempFile | Set-Content -Path $ARLog -Encoding ascii -Force
-    Write-Log "Log file truncated and overwritten (lock fallback)" 'WARN'
+    $fallback = "$ARLog.new"
+    Move-Item -Path $tempFile -Destination $fallback -Force
+    Write-Log "Log locked, wrote results to $fallback" 'WARN'
   }
 }
 catch {
@@ -106,7 +103,10 @@ catch {
     error     = $_.Exception.Message
   }
   $json = $logObj | ConvertTo-Json -Compress -Depth 3
-  Set-Content -Path $ARLog -Value $json -Encoding ascii -Force
+
+  $fallback = "$ARLog.new"
+  Set-Content -Path $fallback -Value $json -Encoding ascii -Force
+  Write-Log "Error logged to $fallback" 'WARN'
 }
 finally {
   $dur = [int]((Get-Date) - $runStart).TotalSeconds
