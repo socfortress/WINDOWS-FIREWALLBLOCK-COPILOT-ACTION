@@ -6,6 +6,7 @@ param(
   [string]$LogPath = "$env:TEMP\BlockIP-script.log",
   [string]$ARLog = 'C:\Program Files (x86)\ossec-agent\active-response\active-responses.log'
 )
+
 if ($Arg1 -and -not $TargetIP) { $TargetIP = $Arg1 }
 if ($Arg2 -and -not $Direction) { $Direction = $Arg2 }
 if ($Arg3 -and -not $MaxWaitSeconds) { $MaxWaitSeconds = [int]$Arg3 }
@@ -71,7 +72,6 @@ try {
     Write-Log "Created firewall rule to block $TargetIP ($Direction)" 'INFO'
     $status = "blocked"
   }
-
   $logObj = [pscustomobject]@{
     timestamp    = (Get-Date).ToString('o')
     host         = $HostName
@@ -81,9 +81,20 @@ try {
     rule_name    = $RuleName
     status       = $status
   }
+  $json = $logObj | ConvertTo-Json -Compress -Depth 3
+  $tempFile = "$env:TEMP\arlog.tmp"
+  Set-Content -Path $tempFile -Value $json -Encoding ascii -Force
 
-  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Append -Encoding ascii -Width 2000
-  Write-Log "JSON appended to $ARLog" 'INFO'
+  try {
+    Remove-Item -Path $ARLog -Force -ErrorAction Stop
+    Move-Item -Path $tempFile -Destination $ARLog -Force
+    Write-Log "Log file overwritten at $ARLog" 'INFO'
+  }
+  catch {
+    Clear-Content -Path $ARLog -Force -ErrorAction SilentlyContinue
+    Get-Content -Path $tempFile | Set-Content -Path $ARLog -Encoding ascii -Force
+    Write-Log "Log file truncated and overwritten (lock fallback)" 'WARN'
+  }
 }
 catch {
   Write-Log $_.Exception.Message 'ERROR'
@@ -94,7 +105,8 @@ catch {
     status    = "error"
     error     = $_.Exception.Message
   }
-  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Append -Encoding ascii -Width 2000
+  $json = $logObj | ConvertTo-Json -Compress -Depth 3
+  Set-Content -Path $ARLog -Value $json -Encoding ascii -Force
 }
 finally {
   $dur = [int]((Get-Date) - $runStart).TotalSeconds
