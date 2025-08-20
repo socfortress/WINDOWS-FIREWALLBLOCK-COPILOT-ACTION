@@ -78,6 +78,7 @@ try {
     direction    = $Direction
     rule_name    = $RuleName
     status       = $status
+    copilot_action = $true
   }
   $json = $logObj | ConvertTo-Json -Compress -Depth 3
   $tempFile = "$env:TEMP\arlog.tmp"
@@ -101,7 +102,7 @@ catch {
     action    = "block_ip"
     status    = "error"
     error     = $_.Exception.Message
-    copilot_soar = $true
+    copilot_action = $true
   }
   $json = $logObj | ConvertTo-Json -Compress -Depth 3
 
@@ -113,3 +114,4 @@ finally {
   $dur = [int]((Get-Date) - $runStart).TotalSeconds
   Write-Log "=== SCRIPT END : duration ${dur}s ==="
 }
+
