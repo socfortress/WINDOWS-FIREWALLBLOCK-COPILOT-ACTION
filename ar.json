@@ -1,5 +1,5 @@
 {
-  "active_response_name": "WINDOWS-FIREWALL-BLOCK-IP-ACTIVERESPONSE",
+  "copilot_action_name": "WINDOWS-FIREWALL-BLOCK-IP-ACTIVERESPONSE",
   "description": "Creates a Windows Defender Firewall rule to block a specific IPv4 address (Inbound or Outbound). Validates IPv4 format, is idempotent (reports if rule already exists), and emits a single NDJSON line with the outcome. Writes atomically to the Active Response log with .new fallback. Requires administrative privileges.",
   "technology": "Windows",
   "icon": "windows",
