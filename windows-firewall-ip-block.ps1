@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$TargetIP,
-  [string]$Direction = 'Inbound', 
+  [string]$Direction = 'Inbound',
   [int]$MaxWaitSeconds = 300,
   [string]$LogPath = "$env:TEMP\BlockIP-script.log",
   [string]$ARLog = 'C:\Program Files (x86)\ossec-agent\active-response\active-responses.log'
@@ -10,20 +10,20 @@ if ($Arg1 -and -not $TargetIP) { $TargetIP = $Arg1 }
 if ($Arg2 -and -not $Direction) { $Direction = $Arg2 }
 if ($Arg3 -and -not $MaxWaitSeconds) { $MaxWaitSeconds = [int]$Arg3 }
 
-$ErrorActionPreference = 'Stop'
-$HostName = $env:COMPUTERNAME
-$LogMaxKB = 100
-$LogKeep = 5
+$ErrorActionPreference='Stop'
+$HostName=$env:COMPUTERNAME
+$LogMaxKB=100
+$LogKeep=5
 
 function Write-Log {
   param([string]$Message,[ValidateSet('INFO','WARN','ERROR','DEBUG')]$Level='INFO')
   $ts=(Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
   $line="[$ts][$Level] $Message"
   switch($Level){
-    'ERROR' { Write-Host $line -ForegroundColor Red }
-    'WARN'  { Write-Host $line -ForegroundColor Yellow }
-    'DEBUG' { if ($PSCmdlet.MyInvocation.BoundParameters.ContainsKey('Verbose')) { Write-Verbose $line } }
-    default { Write-Host $line }
+    'ERROR'{Write-Host $line -ForegroundColor Red}
+    'WARN'{Write-Host $line -ForegroundColor Yellow}
+    'DEBUG'{if($PSCmdlet.MyInvocation.BoundParameters.ContainsKey('Verbose')){Write-Verbose $line}}
+    default{Write-Host $line}
   }
   Add-Content -Path $LogPath -Value $line
 }
@@ -41,77 +41,71 @@ function Rotate-Log {
 }
 
 Rotate-Log
-$runStart = Get-Date
+$runStart=Get-Date
 Write-Log "=== SCRIPT START : Block IP ==="
 
-try {
-  if (-not $TargetIP) { throw "TargetIP is required (no interactive input allowed)" }
-  if ($TargetIP -notmatch '^(\d{1,3}\.){3}\d{1,3}$') {
-    throw "Invalid IPv4 address format: $TargetIP"
-  }
-  $RuleName = "Block_$($TargetIP.Replace('.','_'))"
+try{
+  if(-not $TargetIP){throw "TargetIP is required (no interactive input allowed)"}
+  if($TargetIP -notmatch '^(\d{1,3}\.){3}\d{1,3}$'){throw "Invalid IPv4 address format: $TargetIP"}
+
+  $RuleName="Block_$($TargetIP.Replace('.','_'))"
   Write-Log "Target IP: $TargetIP"
   Write-Log "Direction: $Direction"
   Write-Log "Rule name: $RuleName"
 
-  $existing = Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
-  if ($existing) {
+  $existing=Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
+  if($existing){
     Write-Log "Firewall rule '$RuleName' already exists" 'WARN'
-    $status = "already_exists"
-  }
-  else {
-    New-NetFirewallRule -DisplayName $RuleName `
-                        -Direction $Direction `
-                        -Action Block `
-                        -RemoteAddress $TargetIP `
-                        -Protocol Any `
-                        -Enabled True `
-                        -Profile Any | Out-Null
+    $status="already_exists"
+  }else{
+    New-NetFirewallRule -DisplayName $RuleName -Direction $Direction -Action Block -RemoteAddress $TargetIP -Protocol Any -Enabled True -Profile Any | Out-Null
     Write-Log "Created firewall rule to block $TargetIP ($Direction)" 'INFO'
-    $status = "blocked"
+    $status="blocked"
   }
-  $logObj = [pscustomobject]@{
-    timestamp    = (Get-Date).ToString('o')
-    host         = $HostName
-    action       = "block_ip"
-    target_ip    = $TargetIP
-    direction    = $Direction
-    rule_name    = $RuleName
-    status       = $status
-    copilot_action = $true
-  }
-  $json = $logObj | ConvertTo-Json -Compress -Depth 3
-  $tempFile = "$env:TEMP\arlog.tmp"
-  Set-Content -Path $tempFile -Value $json -Encoding ascii -Force
 
-  try {
+  $obj=[pscustomobject]@{
+    timestamp=(Get-Date).ToString('o')
+    host=$HostName
+    action='block_ip'
+    target_ip=$TargetIP
+    direction=$Direction
+    rule_name=$RuleName
+    status=$status
+    copilot_action=$true
+  }
+  $ndjson=($obj | ConvertTo-Json -Compress -Depth 3)
+  $tempFile="$env:TEMP\arlog.tmp"
+  Set-Content -Path $tempFile -Value $ndjson -Encoding ascii -Force
+  try{
     Move-Item -Path $tempFile -Destination $ARLog -Force
-    Write-Log "Log file replaced at $ARLog" 'INFO'
-  }
-  catch {
-    $fallback = "$ARLog.new"
-    Move-Item -Path $tempFile -Destination $fallback -Force
-    Write-Log "Log locked, wrote results to $fallback" 'WARN'
+    Write-Log "Wrote 1 NDJSON record to $ARLog" 'INFO'
+  }catch{
+    Move-Item -Path $tempFile -Destination "$ARLog.new" -Force
+    Write-Log "ARLog locked; wrote to $($ARLog).new" 'WARN'
   }
 }
-catch {
+catch{
   Write-Log $_.Exception.Message 'ERROR'
-  $logObj = [pscustomobject]@{
-    timestamp = (Get-Date).ToString('o')
-    host      = $HostName
-    action    = "block_ip"
-    status    = "error"
-    error     = $_.Exception.Message
-    copilot_action = $true
+  $obj=[pscustomobject]@{
+    timestamp=(Get-Date).ToString('o')
+    host=$HostName
+    action='block_ip'
+    status='error'
+    error=$_.Exception.Message
+    copilot_action=$true
   }
-  $json = $logObj | ConvertTo-Json -Compress -Depth 3
-
-  $fallback = "$ARLog.new"
-  Set-Content -Path $fallback -Value $json -Encoding ascii -Force
-  Write-Log "Error logged to $fallback" 'WARN'
+  $ndjson=($obj | ConvertTo-Json -Compress -Depth 3)
+  $tempFile="$env:TEMP\arlog.tmp"
+  Set-Content -Path $tempFile -Value $ndjson -Encoding ascii -Force
+  try{
+    Move-Item -Path $tempFile -Destination $ARLog -Force
+    Write-Log "Error JSON written to $ARLog" 'INFO'
+  }catch{
+    Move-Item -Path $tempFile -Destination "$ARLog.new" -Force
+    Write-Log "ARLog locked; wrote error to $($ARLog).new" 'WARN'
+  }
 }
-finally {
-  $dur = [int]((Get-Date) - $runStart).TotalSeconds
+finally{
+  $dur=[int]((Get-Date)-$runStart).TotalSeconds
   Write-Log "=== SCRIPT END : duration ${dur}s ==="
 }
-
