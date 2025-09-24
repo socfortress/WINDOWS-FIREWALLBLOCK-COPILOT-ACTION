@@ -1,11 +1,13 @@
 [CmdletBinding()]
 param(
   [string]$TargetIP,
-  [string]$Direction = 'Inbound',
+  [ValidateSet('Inbound','Outbound')]
+  [string]$Direction,   
   [int]$MaxWaitSeconds = 300,
   [string]$LogPath = "$env:TEMP\BlockIP-script.log",
   [string]$ARLog = 'C:\Program Files (x86)\ossec-agent\active-response\active-responses.log'
 )
+
 if ($Arg1 -and -not $TargetIP) { $TargetIP = $Arg1 }
 if ($Arg2 -and -not $Direction) { $Direction = $Arg2 }
 if ($Arg3 -and -not $MaxWaitSeconds) { $MaxWaitSeconds = [int]$Arg3 }
@@ -109,3 +111,4 @@ finally{
   $dur=[int]((Get-Date)-$runStart).TotalSeconds
   Write-Log "=== SCRIPT END : duration ${dur}s ==="
 }
+
