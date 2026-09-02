@@ -50,19 +50,85 @@ try{
   if(-not $TargetIP){throw "TargetIP is required (no interactive input allowed)"}
   if($TargetIP -notmatch '^(\d{1,3}\.){3}\d{1,3}$'){throw "Invalid IPv4 address format: $TargetIP"}
 
-  $RuleName="Block_$($TargetIP.Replace('.','_'))"
+  $RuleName = "Block_" + ($TargetIP -replace '\.','_') + "_" + $Direction
   Write-Log "Target IP: $TargetIP"
   Write-Log "Direction: $Direction"
   Write-Log "Rule name: $RuleName"
 
-  $existing=Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
-  if($existing){
-    Write-Log "Firewall rule '$RuleName' already exists" 'WARN'
-    $status="already_exists"
-  }else{
-    New-NetFirewallRule -DisplayName $RuleName -Direction $Direction -Action Block -RemoteAddress $TargetIP -Protocol Any -Enabled True -Profile Any | Out-Null
-    Write-Log "Created firewall rule to block $TargetIP ($Direction)" 'INFO'
-    $status="blocked"
+  if (Get-Command Get-NetFirewallRule -ErrorAction SilentlyContinue) {
+
+      # Windows versions with NetSecurity module
+      $existing = Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
+
+      if ($existing) {
+          Write-Log "Firewall rule '$RuleName' already exists" 'WARN'
+          $status = "already_exists"
+      }
+      else {
+          New-NetFirewallRule `
+              -DisplayName $RuleName `
+              -Direction $Direction `
+              -Action Block `
+              -RemoteAddress $TargetIP `
+              -Protocol Any `
+              -Enabled True `
+              -Profile Any | Out-Null
+
+          Write-Log "Created firewall rule to block $TargetIP ($Direction)" 'INFO'
+          $status = "blocked"
+      }
+
+  }
+  else {
+
+      # Legacy Windows versions without the NetSecurity module
+      $FirewallPolicy = New-Object -ComObject HNetCfg.FwPolicy2
+
+      $existing = $null
+
+      try {
+          $existing = $FirewallPolicy.Rules.Item($RuleName)
+      }
+      catch {
+          $existing = $null
+      }
+
+      if ($existing) {
+          Write-Log "Firewall rule '$RuleName' already exists" 'WARN'
+          $status = "already_exists"
+      }
+      else {
+
+          $FirewallRule = New-Object -ComObject HNetCfg.FWRule
+
+          $FirewallRule.Name = $RuleName
+          $FirewallRule.Description = "Block remote IP $TargetIP"
+          $FirewallRule.RemoteAddresses = $TargetIP
+
+          # NET_FW_IP_PROTOCOL_ANY
+          $FirewallRule.Protocol = 256
+
+          # NET_FW_RULE_DIRECTION_IN = 1
+          # NET_FW_RULE_DIRECTION_OUT = 2
+          if ($Direction -eq 'Outbound') {
+              $FirewallRule.Direction = 2
+          }
+          else {
+              $FirewallRule.Direction = 1
+          }
+
+          # NET_FW_ACTION_BLOCK = 0
+          $FirewallRule.Action = 0
+          $FirewallRule.Enabled = $true
+
+          # NET_FW_PROFILE2_ALL
+          $FirewallRule.Profiles = 2147483647
+
+          $FirewallPolicy.Rules.Add($FirewallRule)
+
+          Write-Log "Created firewall rule to block $TargetIP ($Direction)" 'INFO'
+          $status = "blocked"
+      }
   }
 
   $obj=[pscustomobject]@{
